@@ -1,0 +1,47 @@
+#include <cstdlib>
+#include <iostream>
+#include <vector>
+using namespace std;
+
+vector<bool> biti = {true,false,true,false,true,true,true,true};
+
+vector<bool> generateRandBitNumber(int lungime, vector<bool> &biti) {
+
+  for (int i = 0; i < lungime; i++) {
+    biti.push_back(rand() % 2);
+  }
+
+  return biti;
+}
+
+void generareVecini(int lenght, int dimensions, vector<bool> &biti) {
+  // for n dimensions we have n numbers
+  // each number has lenght neighbours
+  // lenght= number lenght
+  vector<bool> neighboursPerDimension;
+
+    for (int j = 0; j < lenght; j++) 
+    {
+      vector<bool> actNeighbours = biti;
+      for(int k=0;k<dimensions;k++)
+        { if(actNeighbours[lenght*k+j]==false)
+            actNeighbours[lenght*k+j]=true;
+          else
+            actNeighbours[lenght*k+j]=false;
+        }
+      neighboursPerDimension.insert(neighboursPerDimension.end(),
+                                    actNeighbours.begin(), actNeighbours.end());
+    }
+  
+  biti.insert(biti.end(), neighboursPerDimension.begin(),
+              neighboursPerDimension.end());
+}
+int main() {
+  generareVecini(4, 2, biti);
+
+  for (int i = 0; i < biti.size(); i++)
+    cout << biti[i] << " ";
+
+
+  return 0;
+}
