@@ -1,0 +1,32 @@
+#include <iostream>
+#include <vector> 
+#include <cstdlib>
+using namespace std; 
+
+vector<char> generareRandBitNumber(int lungime,vector<char>& biti)
+{
+
+    for(int i=0; i<lungime;i++)
+    {
+        biti.push_back(rand()%2);
+    }
+
+    return biti;
+}
+
+void generareVecini(vector<char>& biti)
+{
+    for(int i=0; i<biti.size(); i++)
+    { 
+        vector<char> vecinAct = biti;
+        vecinAct[i] = (vecinAct[i] == '0') ? '1' : '0';
+        biti.insert(biti.end(), vecinAct.begin(), vecinAct.end());
+    }
+}
+
+int main()
+{ int random; 
+    random=rand()%2;
+    cout<<random;
+    
+    return 0;}
