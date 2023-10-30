@@ -1,10 +1,12 @@
 #include <iostream>
+#include <fstream> /* output result in a file */
 #include <iomanip> /* setprecision */
 #include <chrono> /* to calculate the execution time */
 #include <time.h> /* for function time(0) used for the seed */
 #include <cmath> /* math functions, such as sin, pow, ceil etc*/
 #include <vector> /* obviously, vector */
 #include <random> /* for mt19937 */
+#include <omp.h>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -13,23 +15,19 @@
 using namespace std;
 
 // Global parameters
-int dimension = 2;
+int dimension;
 double minimum = NULL;
 double maximum = NULL;
-int precision = 2; // @@@@@@ Cel putin in SA conteaza precizia. Nu stiu daca in HC da, insa poti incerca sa o mai schimbi
-// Cu cat precizia e mai mare, cu atat vectorul de biti e mai lung, si, implicit reprezinti mai multe numere
+int precision;
 int requiredBits = NULL; // no. of bits required to represent a SINGLE number
+ofstream outfile;
+char outputLocation[50];
 int maxIterations = 10;
 
-// WILL BE DELETED
-//vector<bool> bitstring; // will have the size of requiredBits * dimension, therefore being able to contain all required numbers for a single function evaluation
-//vector<double> converted; // converted numbers (from the bitstring vector candidates)
 
-
-
-
+std::chrono::time_point<std::chrono::system_clock> start, finish;
+std::chrono::duration<double> elapsed_seconds;
 mt19937 randomNumber(time(0));
-// @@@@@@@@@@@@@@@@@@@@ imi genereaza o eroare, nu stiu de ce. Poate pentru ca reqBits e null?
 //uniform_int_distribution<int> distribution(1, requiredBits);
 
 enum functions
@@ -72,9 +70,9 @@ double RastriginFunction(vector<double>& converted)
 
 double MichalewiczFunction(vector<double>& converted)
 {
-	double sum = 0; int m = 10;
+	double sum = 0;
 	for (int i = 0; i < dimension; i++)
-		sum -= sin(converted[i]) * pow(sin((i + 1) * converted[i] * converted[i] / M_PI), 2 * m);
+		sum -= sin(converted[i]) * pow(sin((i + 1) * converted[i] * converted[i] / M_PI), 20);
 	return sum;
 }
 
@@ -88,18 +86,22 @@ void setParameters(functions& currentFunction)
 	case functions::DeJong:
 		minimum = -5.12;
 		maximum = 5.12;
+		strcpy_s(outputLocation, "DeJong");
 		break;
 	case functions::Schwefel:
 		minimum = -600;
 		maximum = 600;
+		strcpy_s(outputLocation, "Schwefel");
 		break;
 	case functions::Rastrigin:
 		minimum = -5.12;
 		maximum = 5.12;
+		strcpy_s(outputLocation, "Rastrigin");
 		break;
 	case functions::Michalewicz:
 		minimum = 0;
-		maximum = 3.14;
+		maximum = M_PI; // 3.14
+		strcpy_s(outputLocation, "Michalewicz");
 		break;
 	default:
 		std::cout << "Error at setting the function domain";
@@ -117,28 +119,21 @@ vector<bool> generateRandBitNumber(int lungime, vector<bool> &biti)
 }
 
 
-// Generate neighbours - they will be added at the final of bitstring, not in a new vector
-vector<bool> generateNeighbours(vector<bool> &biti) {
-  // for n dimensions we have n numbers
-  // each number has <requiredBits> neighbours
-  vector<bool> neighboursPerDimension;
 
-    for (int j = 0; j < requiredBits; j++) 
-    {
-      vector<bool> actNeighbours = biti;
-      for(int k=0;k<dimension;k++)
-      { 
-		  if(actNeighbours[requiredBits*k+j]==false)
-             actNeighbours[requiredBits*k+j]=true;
-          else
-             actNeighbours[requiredBits*k+j]=false;
-      }
-      neighboursPerDimension.insert(neighboursPerDimension.end(),
-                                    actNeighbours.begin(), actNeighbours.end());
-    }
-	biti.insert(biti.end(), neighboursPerDimension.begin(),
-               neighboursPerDimension.end());
-    return biti;
+// Generate neighbours - will return a new bool vector, not modifying the source
+vector<bool> generateNeighbours(vector<bool> biti) {
+	vector<bool> neighboursPerDimension;
+	for (int j = 0; j < requiredBits; j++) {
+		vector<bool> actNeighbours = biti;
+		//Flip the j-st bit of each number
+		for (int k = 0; k < dimension; k++) {
+			actNeighbours[requiredBits * k + j] = !actNeighbours[requiredBits * k + j];
+		}
+		// Add the modified neighbors to the vector
+		neighboursPerDimension.insert(neighboursPerDimension.end(),
+			actNeighbours.begin(), actNeighbours.end());
+	}
+	return neighboursPerDimension; // Return only the neighbors, not the initial solution
 }
 
 // Help for startingIndex: each set has lenght of dimension * requiredBits
@@ -239,7 +234,7 @@ vector<bool> steepestAscentHillClimbing(vector<bool>& biti)
 
         for(int i=0; i<requiredBits; ++i)
         {
-            vector<bool> neighbor=generateNeighbours(currentSolution);
+            vector<bool> neighbor= generateNeighbours(currentSolution);
             vector<double>neighborConv=convertBase(neighbor,i*dimension);
             
         }
@@ -265,7 +260,7 @@ double simulatedAnnealing(functions& currentFunction, vector<bool>& bitstring)
 	int l = dimension * requiredBits;
 	double candidateResult, neighbourResult, temperature, global = numeric_limits<double>::max();
 
-	for (int i = 0; i < 1000; i++)
+	for (int i = 0; i < 100; i++)
 	{
 		int index = 0;
 		temperature = 100;
@@ -281,37 +276,54 @@ double simulatedAnnealing(functions& currentFunction, vector<bool>& bitstring)
 		if (candidateResult < global)
 			global = candidateResult;
 
+		double t = 1;
 		// Start of SA algorithm
 		do
 		{
 			bool no_change = false;
-			int contor = 0;
+			int contor = 0, contor2=0;
 			do
 			{
-				// Check for best Hamming 1 neighbour
-				double bestNeighbour = numeric_limits<double>::max();
-				index = 0;
-				bitstring = generateNeighbours(bitstring);
-				for (int k = l; k <= l * requiredBits; k = k + l)
+				if (!no_change)
 				{
-					converted = convertBase(bitstring, k);
-					neighbourResult = evaluateFunction(currentFunction, converted);
-					if (neighbourResult < candidateResult && neighbourResult < bestNeighbour)
+					index = 0;
+					// Check for best Hamming 1 neighbour
+					double bestNeighbour = numeric_limits<double>::max();
+
+					vector<bool>neighbours = generateNeighbours(bitstring);
+					bitstring.insert(bitstring.end(), neighbours.begin(), neighbours.end());
+					// At index k we have the best neighbour
+					for (int k = l; k <= l * requiredBits; k = k + l)
 					{
-						index = k;
-						bestNeighbour = neighbourResult;
+						converted = convertBase(bitstring, k);
+						neighbourResult = evaluateFunction(currentFunction, converted);
+						if (neighbourResult < candidateResult && neighbourResult < bestNeighbour)
+						{
+							index = k;
+							bestNeighbour = neighbourResult;
+						}
+						if (neighbourResult < global)
+							global = neighbourResult;
 					}
-					if (neighbourResult < global)
-						global = neighbourResult;
 				}
-				// If a better neighbour is not found, get a random Hamming 2 one
-				if (index == 0)
-					index = l * (randomNumber() % requiredBits + 1);
 
 				// Final evaluation of the neighour
 				vector<bool> newCandidate;
 				for (int k = index; k < index + l; k++)
 					newCandidate.push_back(bitstring[k]);
+
+				// If a better Hamming 1 neighbour is not found, try a random one.
+				if (index == 0)
+				{
+					int NumberOfChanges = randomNumber() % (2 * requiredBits - (randomNumber() % 6));
+					while (NumberOfChanges)
+					{
+						int randomIndex = randomNumber() % l;
+						newCandidate[randomIndex] = !newCandidate[randomIndex];
+						NumberOfChanges--;
+					}
+				}
+
 				converted = convertBase(newCandidate);
 				neighbourResult = evaluateFunction(currentFunction, converted);
 
@@ -341,36 +353,100 @@ double simulatedAnnealing(functions& currentFunction, vector<bool>& bitstring)
 					while (bitstring.size() > l)
 						bitstring.pop_back();
 					no_change = true;
+					contor2++;
 				}
-				// Stop when nothing changes or when we reach enough "Second case"
-			} while (contor < requiredBits && no_change == false);
-			temperature = temperature * 0.9;
-		} while (temperature > 10e-8);
-		cout << fixed << setprecision(5) << "Iteratie: " << i << ", Best: " << global << ", local: " << candidateResult << endl;
+			} while (contor < 2*requiredBits && contor2<3);
+			t *= 1.7;
+			temperature = 1.7 / log2(t + 50); // 70-100
+		} while (temperature > 10e-5);
+
+		// Get the running time
+		//finish = std::chrono::system_clock::now();
+		//elapsed_seconds = finish - start;
+		cout << fixed << setprecision(5) << "Iteratie: " << i + 1 << ", Best: " << global <<
+			", local: " << candidateResult << endl;
+		//cout<<", timp: " << elapsed_seconds.count() << endl;
 	}
 	cout << global;
 	return global;
 }
 
+void compile(functions& currentFunction)
+{
+	// SIMULATED ANNEALING
+	strcat_s(outputLocation, "SA.txt");
+	outfile.open(outputLocation, std::ios_base::app);
+	outfile << "Results for " << dimension << " dimensions" << '\n' << '\n';
+	#pragma omp parallel for
+	for (int iteratie = 1; iteratie <= 30; iteratie++)
+	{
+		start = std::chrono::system_clock::now();
+		vector<bool>bitstring;
+		double result = simulatedAnnealing(currentFunction, bitstring);
+		finish = std::chrono::system_clock::now();
+		elapsed_seconds = finish - start;
+		outfile << "Iteratie: " << iteratie << ", rezultat: " << result << ", durata executie: " << elapsed_seconds.count() << '\n';
+	}
+	outfile.close();
+}
 
 int main()
 {
 	functions currentFunction;
+
 	currentFunction = functions::Rastrigin;
+	dimension = 5, precision = 7;
 	setParameters(currentFunction);
-	
-    //vector<bool>biti;
-    //generateRandBitNumber(requiredBits,biti);
-    //vector<bool> FINAL=steepestAscentHillClimbing(biti);
+	compile(currentFunction);
+	dimension = 10, precision = 3;
+	setParameters(currentFunction);
+	compile(currentFunction);
+	//dimension = 30, precision = 1;
+	//setParameters(currentFunction);
+	//compile(currentFunction);
 
-    // converted=convertBase(FINAL,0);
-    // cout<< "Solutia finala este: "<<endl;
-    // for(int i=0;i<converted.size();i++)
-    // cout<<converted[i]<<" ";
-    // cout<<endl;
+	currentFunction = functions::DeJong;
+	dimension = 5, precision = 7;
+	setParameters(currentFunction);
+	compile(currentFunction);
+	dimension = 10, precision = 3;
+	setParameters(currentFunction);
+	compile(currentFunction);
+	dimension = 30, precision = 1;
+	setParameters(currentFunction);
+	compile(currentFunction);
 
-	vector<bool>bitstring;
-	simulatedAnnealing(currentFunction, bitstring);
+	currentFunction = functions::Schwefel;
+	dimension = 5, precision = 7;
+	setParameters(currentFunction);
+	compile(currentFunction);
+	dimension = 10, precision = 3;
+	setParameters(currentFunction);
+	compile(currentFunction);
+	dimension = 30, precision = 1;
+	setParameters(currentFunction);
+	compile(currentFunction);
+
+	currentFunction = functions::Michalewicz;
+	dimension = 5, precision = 7;
+	setParameters(currentFunction);
+	compile(currentFunction);
+	dimension = 10, precision = 3;
+	setParameters(currentFunction);
+	compile(currentFunction);
+	dimension = 30, precision = 1;
+	setParameters(currentFunction);
+	compile(currentFunction);
+
+	//vector<bool>biti;
+	//generateRandBitNumber(requiredBits,biti);
+	//vector<bool> FINAL=steepestAscentHillClimbing(biti);
+
+	// converted=convertBase(FINAL,0);
+	// cout<< "Solutia finala este: "<<endl;
+	// for(int i=0;i<converted.size();i++)
+	// cout<<converted[i]<<" ";
+	// cout<<endl;
 	return 0;
 }
 
