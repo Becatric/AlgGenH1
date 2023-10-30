@@ -22,13 +22,12 @@ int precision;
 int requiredBits = NULL; // no. of bits required to represent a SINGLE number
 ofstream outfile;
 char outputLocation[50];
-int maxIterations = 10;
+int maxIterations = 100;
 
 
 std::chrono::time_point<std::chrono::system_clock> start, finish;
 std::chrono::duration<double> elapsed_seconds;
 mt19937 randomNumber(time(0));
-//uniform_int_distribution<int> distribution(1, requiredBits);
 
 enum functions
 {
@@ -110,22 +109,12 @@ void setParameters(functions& currentFunction)
 	requiredBits = std::ceil(log2((maximum - minimum) * pow(10, precision)));
 }
 
-
-vector<bool> generateRandBitNumber(int lungime, vector<bool> &biti) 
-{
-  for (int i = 0; i < lungime; i++)
-	  biti.push_back(rand() % 2);
-  return biti;
-}
-
-
-
 // Generate neighbours - will return a new bool vector, not modifying the source
 vector<bool> generateNeighbours(vector<bool> biti) {
 	vector<bool> neighboursPerDimension;
 	for (int j = 0; j < requiredBits; j++) {
 		vector<bool> actNeighbours = biti;
-		//Flip the j-st bit of each number
+		// Flip the j-st bit of each number
 		for (int k = 0; k < dimension; k++) {
 			actNeighbours[requiredBits * k + j] = !actNeighbours[requiredBits * k + j];
 		}
@@ -153,7 +142,7 @@ vector<double> convertBase(std::vector<bool>& bitstring, int startingIndex = 0)
 		convertedNumber = convertedNumber * (maximum - minimum) + minimum;
 		converted.push_back(convertedNumber);
 	}
-    return converted;
+	return converted;
 }
 
 
@@ -182,75 +171,96 @@ double evaluateFunction(functions& currentFunction, vector<double>& converted)
 	return res;
 }
 
-// HillClimbing functions
-// @@@@@@@@@@@@@@@@@@@@ Ar putea fi dat parametrul prin referinta sa nu faca o copie?
-vector<bool> firstChoiceHillClimbing(vector<bool> biti)
+//
+// Hill Climbing functions
+//
+
+// Random bitstring - used only in HC
+vector<bool> generateRandBitNumber(int lungime, vector<bool>& biti)
 {
-	// Nu cred ca are sens sa copiezi intr-un nou vector parametrul. 
-	// Nu stiu cum functioneaza functia totusi, poate ai nevoie sa nu
-	// schimbi vectorul biti, caz in care e ok.
-    vector<bool> currentSolution=biti;
-    int iterations=0;
-
-    while(iterations<maxIterations)
-    { int j=0; 
-	// @@@@@@@@@@@@@@ De ce incepi de la 0? 
-	// generateNeighbours da append la vecini. La 0 e candidatul efectiv, 
-	// pierzi timp recalculandu-l. Ar trebui sa inceapa la requiredBits*dimension
-	// Personal in SA mi-am facut o variabila L = requiredBits*dimension
-	// Sa nu calculez de prea multe ori
-        vector<bool> neighbor= generateNeighbours(currentSolution);
-        vector<double> neighborConv=convertBase(neighbor, j);
-        vector<double> currentSolConv= convertBase(currentSolution,0);    
-
-	// @@@@@@@@@@@@ Aici am zis deja ca trebuie un evaluateFunction
-        if(neighborConv>currentSolConv)
-        { currentSolution=neighbor; j=0;}
-
-		j++;
-    cout<< "Iteratie: " << iterations << ", Best: " ;
-    for(int k=0;k<currentSolConv.size();k++)
-    cout << currentSolConv[k];
-    cout<<endl;
-
-
-     iterations++;   
-  }
-
-  return currentSolution;
+	for (int i = 0; i < lungime * dimension; i++)
+		biti.push_back(randomNumber() % 2);
+	return biti;
 }
 
-// @@@@@@@@ idk, prefer sa-mi dai poze cu Hanna decat sa incerc sa inteleg. Prea multa info strica
+// First Improvement
+double firstChoiceHillClimbing(vector<bool> biti, functions currentFunction)
+{
+	start = std::chrono::system_clock::now();
+	int L = requiredBits * dimension;
+	double result = numeric_limits<double>::max();
+	for (int iterations = 0; iterations < 20000; iterations++)
+	{
+		vector<bool> currentSolution;
+		currentSolution = generateRandBitNumber(requiredBits, currentSolution);
+		bool change = true;
+		while (change)
+		{
+			change = false;
+			vector<double> currentSolConv = convertBase(currentSolution);
+			vector<bool> neighbour = generateNeighbours(currentSolution);
+			for (int index = 0; index < requiredBits * L && change == false; index = index + L)
+			{
+				vector<double> neighbourConv = convertBase(neighbour, index);
+				if (evaluateFunction(currentFunction, neighbourConv) < evaluateFunction(currentFunction, currentSolConv))
+				{
+					change = true;
+					vector<bool> aux;
+					for (int i = index; i < index + L; i++)
+						aux.push_back(neighbour[i]);
+					currentSolution = aux;
+				}
+			}
+			if (change)
+			{
+				currentSolConv = convertBase(currentSolution);
+				if (evaluateFunction(currentFunction, currentSolConv) < result)
+				{
+					result = evaluateFunction(currentFunction, currentSolConv);
+					//cout << result << endl;
+				}
+			}
+		}
+	}
+	finish = std::chrono::system_clock::now();
+	elapsed_seconds = finish - start;
+	outfile << "Rezultat: " << result << ", durata executie: " << elapsed_seconds.count() << '\n';
+	return result;
+}
+
+// Best Improvement
 vector<bool> steepestAscentHillClimbing(vector<bool>& biti)
 {
 
-    vector<bool> currentSolution = biti; //initial vector
-    int iterations = 0;
-    
-    while (iterations < maxIterations) {
-        vector<bool> bestNeighbor = currentSolution;
-        vector<double>bestNeighborConv= convertBase(bestNeighbor,0);
-        bool foundBetterNeighbor = false;
+	vector<bool> currentSolution = biti; //initial vector
+	int iterations = 0;
 
-        for(int i=0; i<requiredBits; ++i)
-        {
-            vector<bool> neighbor= generateNeighbours(currentSolution);
-            vector<double>neighborConv=convertBase(neighbor,i*dimension);
-            
-        }
+	while (iterations < maxIterations) {
+		vector<bool> bestNeighbor = currentSolution;
+		vector<double>bestNeighborConv = convertBase(bestNeighbor, 0);
+		bool foundBetterNeighbor = false;
 
-        if(!foundBetterNeighbor)
-        { break;}
+		for (int i = 0; i < requiredBits; ++i)
+		{
+			vector<bool> neighbor = generateNeighbours(currentSolution);
+			vector<double>neighborConv = convertBase(neighbor, i * dimension);
 
-        currentSolution=bestNeighbor;
-        cout<<"AAAAAAAAAAAA"<<endl;
-        cout << fixed << setprecision(5) << "Iteratie: " << iterations << ", Best: " ;
-      for(int k=0;k<bestNeighborConv.size();k++)
-        cout << bestNeighborConv[k];
-        cout<<endl;
-        iterations++;
-    }
-        return currentSolution;
+		}
+
+		if (!foundBetterNeighbor)
+		{
+			break;
+		}
+
+		currentSolution = bestNeighbor;
+		cout << "AAAAAAAAAAAA" << endl;
+		cout << fixed << setprecision(5) << "Iteratie: " << iterations << ", Best: ";
+		for (int k = 0; k < bestNeighborConv.size(); k++)
+			cout << bestNeighborConv[k];
+		cout << endl;
+		iterations++;
+	}
+	return currentSolution;
 }
 
 
@@ -281,7 +291,7 @@ double simulatedAnnealing(functions& currentFunction, vector<bool>& bitstring)
 		do
 		{
 			bool no_change = false;
-			int contor = 0, contor2=0;
+			int contor = 0, contor2 = 0;
 			do
 			{
 				if (!no_change)
@@ -355,19 +365,15 @@ double simulatedAnnealing(functions& currentFunction, vector<bool>& bitstring)
 					no_change = true;
 					contor2++;
 				}
-			} while (contor < 2*requiredBits && contor2<3);
+			} while (contor < 2 * requiredBits && contor2 < 3);
 			t *= 1.7;
 			temperature = 1.7 / log2(t + 50); // 70-100
 		} while (temperature > 10e-5);
 
-		// Get the running time
-		//finish = std::chrono::system_clock::now();
-		//elapsed_seconds = finish - start;
-		cout << fixed << setprecision(5) << "Iteratie: " << i + 1 << ", Best: " << global <<
-			", local: " << candidateResult << endl;
-		//cout<<", timp: " << elapsed_seconds.count() << endl;
+		//cout << fixed << setprecision(5) << "Iteratie: " << i + 1 << ", Best: " << global <<
+		//	", local: " << candidateResult << endl;
 	}
-	cout << global;
+	//cout << global;
 	return global;
 }
 
@@ -395,15 +401,18 @@ int main()
 	functions currentFunction;
 
 	currentFunction = functions::Rastrigin;
+
+	// SA
+	/*
 	dimension = 5, precision = 7;
 	setParameters(currentFunction);
 	compile(currentFunction);
 	dimension = 10, precision = 3;
 	setParameters(currentFunction);
 	compile(currentFunction);
-	//dimension = 30, precision = 1;
-	//setParameters(currentFunction);
-	//compile(currentFunction);
+	dimension = 30, precision = 1;
+	setParameters(currentFunction);
+	compile(currentFunction);
 
 	currentFunction = functions::DeJong;
 	dimension = 5, precision = 7;
@@ -437,16 +446,15 @@ int main()
 	dimension = 30, precision = 1;
 	setParameters(currentFunction);
 	compile(currentFunction);
+	*/
 
-	//vector<bool>biti;
-	//generateRandBitNumber(requiredBits,biti);
-	//vector<bool> FINAL=steepestAscentHillClimbing(biti);
-
-	// converted=convertBase(FINAL,0);
-	// cout<< "Solutia finala este: "<<endl;
-	// for(int i=0;i<converted.size();i++)
-	// cout<<converted[i]<<" ";
-	// cout<<endl;
+	// HC
+	setParameters(currentFunction);
+	vector<bool> biti;
+	biti = generateRandBitNumber(requiredBits, biti);
+	dimension = 5, precision = 5;
+	// Poti apela functia asta de 30 ori cu un for, sa fie 30 rulari cum cere. Sper ca nu crapa
+	cout << firstChoiceHillClimbing(biti, currentFunction);
 	return 0;
 }
 
