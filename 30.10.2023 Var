@@ -1,3 +1,6 @@
+//AM FACUT IAR NISTE SCHIMBARI 
+
+
 #include <iostream>
 #include <iomanip> /* setprecision */
 #include <chrono> /* to calculate the execution time */
@@ -226,7 +229,10 @@ vector<bool> firstChoiceHillClimbing(vector<bool> biti, functions currentFunctio
 		}
 		if(difmic==pingpong)
 		{	
-        	vector<double> neighborConv = convertBase(neighbor, (j+1 )* L);
+			int k=randomNumber()%requiredBits;
+			while(k==j)
+			k=randomNumber()%requiredBits;
+        	vector<double> neighborConv = convertBase(neighbor, k* L);
 			difmic=0;
 		}
 
@@ -257,23 +263,40 @@ vector<bool> bestChoiceHillClimbing(vector<bool>& biti, functions currentFunctio
     vector<bool> currentSolution = biti; // initial vector
     int iterations = 0;
     int L = requiredBits * dimension;
-
+	int difmic=0;
     while (iterations < maxIterations) {
-        vector<bool> bestNeighbor = currentSolution;
+    
+		vector<bool> bestNeighbor = currentSolution;
         vector<double> bestNeighborConv = convertBase(bestNeighbor, 0);
         double bestNeighborValue = evaluateFunction(currentFunction, bestNeighborConv);
         bool foundBetterNeighbor = false;
 
+	
         for (int i = 0; i < requiredBits; ++i) {
             vector<bool> neighbor = generateNeighbours(currentSolution);
             vector<double> neighborConv = convertBase(neighbor, i * L);
             double neighborValue = evaluateFunction(currentFunction, neighborConv);
+
+
+		if(abs(evaluateFunction(currentFunction, neighborConv)-evaluateFunction(currentFunction, bestNeighborConv))<2)
+		{
+			difmic++;
+		}
+		if(difmic==pingpong)
+		{	
+			int k=randomNumber()%requiredBits;
+			neighbor[i*L+k]=!neighbor[i*L+k];
+        	vector<double> neighborConv = convertBase(neighbor, k* L);
+			difmic=0;
+		}
+
 
             if (neighborValue < bestNeighborValue) {
                 bestNeighbor = neighbor;
                 bestNeighborConv = neighborConv;
                 bestNeighborValue = neighborValue;
                 foundBetterNeighbor = true;
+				currentSolution=bestNeighbor;
             }
         }
 
@@ -284,9 +307,8 @@ vector<bool> bestChoiceHillClimbing(vector<bool>& biti, functions currentFunctio
         currentSolution = bestNeighbor;
 
         cout << fixed << setprecision(5) << "Iteratie: " << iterations << ", Best: ";
-        for (int k = 0; k < bestNeighborConv.size(); k++)
-            cout << bestNeighborConv[k] << ' ';
-        cout << endl;
+		cout<<evaluateFunction(currentFunction,bestNeighborConv);
+		cout << endl;
 
         iterations++;
     }
@@ -407,9 +429,9 @@ int main()
     biti=generateRandBitNumber(requiredBits,biti);
 	vecini=generateNeighbours(biti);
 	
-    vector<bool> FINAL=firstChoiceHillClimbing(biti,currentFunction);
+    //vector<bool> FINAL=firstChoiceHillClimbing(biti,currentFunction);
 	//cout<<"BBB"<<endl;
-	//vector<bool> FINAL=bestChoiceHillClimbing(biti,currentFunction);
+	vector<bool> FINAL=bestChoiceHillClimbing(biti,currentFunction);
 
     // vector<double>converted=convertBase(FINAL,0);
     // cout<< "Solutia finala este: "<<endl;
